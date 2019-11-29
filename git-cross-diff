@@ -1,0 +1,259 @@
+#! /bin/bash
+
+set -e
+
+pr_info()
+{
+    echo "$@" >&2
+}
+
+panic()
+{
+    echo "$@" >&2
+    exit 1
+}
+
+usage()
+{
+    cat >>/dev/stderr<<'MSG'
+git cross-diff - Diff logs between two branches
+
+== Usage ==
+    git cross-diff [options] [--] [path...]
+    git cross-diff [options] OLD_HEAD
+    git cross-diff [options] OLD_HEAD NEW_HEAD
+
+This script will diff two commit logs. It is sort of equivalent to the following:
+
+    diff -u <(git log OLD_BASE..OLD_HEAD) <(git log NEW_BASE..NEW_HEAD)
+
+Running the above command generates non-interesting diffs. For example
+identical patches rebased top of slightly different trees will have different
+commit hashes, but this is not interesting. This script will filter such noise
+and provide an answer to "what was changed by this rebase".
+
+== Options ==
+    -h --help: Show this message.
+    -v --verbose -q --quiet: Be more or less verbose.
+
+    --old --old-head: Specify the OLD_HEAD commit.
+    --new --new-head: Specify the NEW_HEAD commit.
+    --old-base OLD_BASE: Specify the OLD_BASE commit.
+    --new-base NEW_BASE: Specify the NEW_BASE commit.
+    --base BASE: Set both OLD_BASE and NEW_BASE to same commit.
+
+    --path PATH: Add this to the paths list.
+
+    -p --patch --no-patch: Also diff the patches (default false).
+    --diff-bases --no-diff-bases: To diff the two BASEs or not (default if --patch).
+    --diff-heads --no-diff-heads: To diff the two HEADs or not (default if --patch).
+    --{in,ex}clude-stable-patch-id: Include stable patch-id for each commit (off by default).
+    --{in,ex}clude-commit-hash: Include commit hash for each commit (off by default).
+
+The OLD_HEAD and NEW_HEAD can also be specified as non-option arguments.
+
+Paths are specified after a double dash (--) or with --path. This can be used
+to restrict examination to a set of paths.
+
+The following rules are used to deal with incomplete arguments:
+
+ * The OLD_HEAD is mandatory.
+ * If NEW_HEAD is not specified it defaults to the current git HEAD.
+ * If OLD_BASE is not specified it defaults to `git merge-base OLD_HEAD NEW_BASE`.
+ * If NEW_BASE is not specified it defaults to `git merge-base NEW_HEAD OLD_BASE`.
+ * If neither OLD_BASE nor NEW_BASE are specified they both default to `git merge-base OLD_HEAD NEW_HEAD`.
+MSG
+}
+
+parse_args()
+{
+    OLD_HEAD=
+    NEW_HEAD=
+    OLD_BASE=
+    NEW_BASE=
+    opt_patch=0
+    opt_diff_bases=
+    opt_diff_heads=
+    opt_include_stable_patch_id=0
+    opt_include_commit_hash=0
+    opt_paths=()
+    local found_dashes=0
+
+    # Scan args
+    local LONG_OPTS=\
+"help"\
+",path:"\
+",patch,no-patch"\
+",diff-bases,no-diff-bases"\
+",diff-heads,no-diff-heads"\
+",include-stable-patch-id,exclude-stable-patch-id"\
+",include-commit-hash,exclude-commit-hash"\
+",old:,old-head:,old-base:,new:,new-head:,new-base:,base:"
+
+    local opts
+    opts=$(getopt -n git-cross-diff -o -hp -l "$LONG_OPTS" -- "$@")
+    eval set -- "$opts"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h|--help) usage; exit 1 ;;
+        --old|--old-head) OLD_HEAD=$2; shift ;;
+        --new|--new-head) NEW_HEAD=$2; shift ;;
+        --old-base) OLD_BASE=$2; shift ;;
+        --new-base) NEW_BASE=$2; shift ;;
+        -p|--patch) opt_patch=1 ;;
+        --no-patch) opt_patch=0 ;;
+        --diff-bases) opt_diff_bases=1 ;;
+        --no-diff-bases) opt_diff_bases=0 ;;
+        --diff-heads) opt_diff_heads=1 ;;
+        --no-diff-heads) opt_diff_heads=0 ;;
+        --include-stable-patch-id) opt_include_stable_patch_id=1 ;;
+        --exclude-stable-patch-id) opt_include_stable_patch_id=0 ;;
+        --include-commit-hash) opt_include_commit_hash=1 ;;
+        --exclude-commit-hash) opt_include_commit_hash=0 ;;
+        --base)
+            OLD_BASE=$2
+            NEW_BASE=$2
+            shift
+            ;;
+        --path) opt_paths+=("$2"); shift ;;
+        --) found_dashes=1 ;;
+        *)
+            if [[ $found_dashes == 1 ]]; then
+                opt_paths+=("$1")
+            elif [[ -z $OLD_HEAD ]]; then
+                OLD_HEAD=$1
+            elif [[ -z $NEW_HEAD ]]; then
+                NEW_HEAD=$1
+            else
+                panic "Unexpected argument $1"
+            fi
+            ;;
+        esac
+        shift
+    done
+}
+
+pretty_describe()
+{
+    local hexsha=$(git rev-parse $1)
+    echo -n "$1"
+    if [[ $hexsha != $1 ]]; then
+        echo -n " $hexsha"
+    fi
+    echo " (`git describe --all "$hexsha"`)"
+}
+
+git_stable_patch_id()
+{
+    local commit=$1
+    local -a out
+    out=$(git diff-tree -p "$commit" | git patch-id --stable)
+    echo "${out:0:40}"
+}
+
+clean_patch_log()
+{
+    local base=$1 head=$2
+    local format
+    format+='commit %H%n'
+    format+='Author: %aN %ae%n'
+    #format+='%nCommiter: %cN %ce%n'
+    format+='AuthorDate: %ad%n'
+    format+='Summary: %s%n'
+    format+='%n%w(,4,4)%b'
+    local cmd=(git log --reverse "$base..$head" "--format=format:$format")
+    if [[ $opt_patch == 1 ]]; then
+        cmd+=(--patch)
+    fi
+    if [[ ${#opt_paths[@]} -gt 0 ]]; then
+        cmd+=(-- "${opt_paths[@]}")
+    fi
+    pr_info "RUN: '${cmd[@]}'"
+    "${cmd[@]}" | {
+        local commit
+        local line
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^commit\ [0-9a-f]+$ ]]; then
+                commit=${line:7}
+                pr_info "Found commit $commit"
+                if [[ -n $commit ]]; then
+                    echo "EndCommit"
+                    echo
+                fi
+                if [[ $opt_include_commit_hash == 1 ]]; then
+                    echo "BeginCommit $commit"
+                else
+                    echo "BeginCommit"
+                fi
+                if [[ $opt_include_stable_patch_id == 1 ]]; then
+                    local stable_patch_id=`git_stable_patch_id $commit`
+                    echo "ComputedStablePatchId: $stable_patch_id"
+                fi
+                continue
+            fi
+            echo "$line"
+        done
+        [[ -n $commit ]] && echo "EndCommit"
+    }
+}
+
+main()
+{
+    local range_expr
+    parse_args "$@"
+    if [[ -z $OLD_HEAD ]]; then
+        panic "Must specify OLD_HEAD (see --help)"
+    fi
+    if [[ -z $NEW_HEAD ]]; then
+        NEW_HEAD=HEAD
+    fi
+    if [[ -z $OLD_BASE && -z $NEW_BASE ]]; then
+        NEW_BASE=`git merge-base "$OLD_HEAD" "$NEW_HEAD"`
+        OLD_BASE=$NEW_BASE
+    fi
+    if [[ -z $OLD_BASE ]]; then
+        OLD_BASE=`git merge-base "$OLD_HEAD" "$NEW_BASE"`
+    fi
+    if [[ -z $NEW_BASE ]]; then
+        NEW_BASE=`git merge-base "$OLD_BASE" "$NEW_HEAD"`
+    fi
+    if [[ -z $opt_diff_bases ]]; then
+        opt_diff_bases=$opt_patch
+    fi
+    if [[ -z $opt_diff_heads ]]; then
+        opt_diff_heads=$opt_patch
+    fi
+
+    echo "OLD_HEAD is `pretty_describe $OLD_HEAD`"
+    echo "NEW_HEAD is `pretty_describe $NEW_HEAD`"
+    echo "OLD_BASE is `pretty_describe $OLD_BASE`"
+    echo "NEW_BASE is `pretty_describe $NEW_BASE`"
+
+    if git diff --quiet "$OLD_HEAD" "$NEW_HEAD" "${opt_paths[@]}"; then
+        echo "OLD_HEAD and NEW_HEAD trees are identical"
+    else
+        if [[ $opt_diff_heads == 1 ]]; then
+            echo "OLD_HEAD and NEW_HEAD trees are different:"
+            git --no-pager diff "$OLD_HEAD" "$NEW_HEAD" "${opt_paths[@]}"
+        else
+            echo "OLD_HEAD and NEW_HEAD trees are different (try --diff-heads)"
+        fi
+    fi
+
+    if git diff --quiet "$OLD_BASE" "$NEW_BASE" "${opt_paths[@]}"; then
+        echo "OLD_BASE and NEW_BASE trees are identical"
+    else
+        if [[ $opt_diff_bases == 1 ]]; then
+            echo "OLD_BASE and NEW_BASE trees are different:"
+            git --no-pager diff "$OLD_BASE" "$NEW_BASE" "${opt_paths[@]}"
+        else
+            echo "OLD_BASE and NEW_BASE trees are different (try --diff-bases)"
+        fi
+    fi
+
+    diff -u \
+            <(clean_patch_log $OLD_BASE $OLD_HEAD) \
+            <(clean_patch_log $NEW_BASE $NEW_HEAD)
+}
+
+main "$@"
