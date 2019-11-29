@@ -1,5 +1,4 @@
 ~~~
-~~~
 cross-diff - Diff logs between two branches
 
 == Usage ==
@@ -46,3 +45,4 @@ The following rules are used to deal with incomplete arguments:
  * If OLD_BASE is not specified it defaults to `git merge-base OLD_HEAD NEW_BASE`.
  * If NEW_BASE is not specified it defaults to `git merge-base NEW_HEAD OLD_BASE`.
  * If neither OLD_BASE nor NEW_BASE are specified they both default to `git merge-base OLD_HEAD NEW_HEAD`.
+~~~
