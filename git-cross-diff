@@ -141,7 +141,8 @@ help\
 
 pretty_describe()
 {
-    local hexsha=$(git rev-parse $1)
+    local hexsha
+    hexsha=$(git rev-parse $1)
     echo -n "$1"
     if [[ $hexsha != $1 ]]; then
         echo -n " $hexsha"
@@ -192,7 +193,8 @@ clean_patch_log()
                     echo "BeginCommit"
                 fi
                 if [[ $opt_include_stable_patch_id == 1 ]]; then
-                    local stable_patch_id=`git_stable_patch_id $commit`
+                    local stable_patch_id
+                    stable_patch_id=`git_stable_patch_id $commit`
                     echo "ComputedStablePatchId: $stable_patch_id"
                 fi
                 continue
