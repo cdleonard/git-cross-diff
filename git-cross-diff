@@ -142,12 +142,12 @@ help\
 pretty_describe()
 {
     local hexsha
-    hexsha=$(git rev-parse $1)
+    hexsha=$(git rev-parse "$1")
     echo -n "$1"
     if [[ $hexsha != $1 ]]; then
         echo -n " $hexsha"
     fi
-    echo " (`git describe --all "$hexsha"`)"
+    echo " ($(git describe --all "$hexsha"))"
 }
 
 git_stable_patch_id()
@@ -194,7 +194,7 @@ clean_patch_log()
                 fi
                 if [[ $opt_include_stable_patch_id == 1 ]]; then
                     local stable_patch_id
-                    stable_patch_id=`git_stable_patch_id $commit`
+                    stable_patch_id=$(git_stable_patch_id "$commit")
                     echo "ComputedStablePatchId: $stable_patch_id"
                 fi
                 continue
@@ -207,7 +207,6 @@ clean_patch_log()
 
 main()
 {
-    local range_expr
     parse_args "$@"
     if [[ -z $OLD_HEAD ]]; then
         panic "Must specify OLD_HEAD (see --help)"
@@ -216,14 +215,14 @@ main()
         NEW_HEAD=HEAD
     fi
     if [[ -z $OLD_BASE && -z $NEW_BASE ]]; then
-        NEW_BASE=`git merge-base "$OLD_HEAD" "$NEW_HEAD"`
+        NEW_BASE=$(git merge-base "$OLD_HEAD" "$NEW_HEAD")
         OLD_BASE=$NEW_BASE
     fi
     if [[ -z $OLD_BASE ]]; then
-        OLD_BASE=`git merge-base "$OLD_HEAD" "$NEW_BASE"`
+        OLD_BASE=$(git merge-base "$OLD_HEAD" "$NEW_BASE")
     fi
     if [[ -z $NEW_BASE ]]; then
-        NEW_BASE=`git merge-base "$OLD_BASE" "$NEW_HEAD"`
+        NEW_BASE=$(git merge-base "$OLD_BASE" "$NEW_HEAD")
     fi
     if [[ -z $opt_diff_bases ]]; then
         opt_diff_bases=$opt_patch
@@ -232,10 +231,10 @@ main()
         opt_diff_heads=$opt_patch
     fi
 
-    echo "OLD_HEAD is `pretty_describe $OLD_HEAD`"
-    echo "NEW_HEAD is `pretty_describe $NEW_HEAD`"
-    echo "OLD_BASE is `pretty_describe $OLD_BASE`"
-    echo "NEW_BASE is `pretty_describe $NEW_BASE`"
+    echo "OLD_HEAD is $(pretty_describe "$OLD_HEAD")"
+    echo "NEW_HEAD is $(pretty_describe "$NEW_HEAD")"
+    echo "OLD_BASE is $(pretty_describe "$OLD_BASE")"
+    echo "NEW_BASE is $(pretty_describe "$NEW_BASE")"
 
     if git diff --quiet "$OLD_HEAD" "$NEW_HEAD" "${opt_paths[@]}"; then
         echo "OLD_HEAD and NEW_HEAD trees are identical"
@@ -260,8 +259,8 @@ main()
     fi
 
     diff -u \
-            <(clean_patch_log $OLD_BASE $OLD_HEAD) \
-            <(clean_patch_log $NEW_BASE $NEW_HEAD)
+            <(clean_patch_log "$OLD_BASE" "$OLD_HEAD") \
+            <(clean_patch_log "$NEW_BASE" "$NEW_HEAD")
 }
 
 main "$@"
