@@ -39,7 +39,6 @@ Options:
 --------
 
 -h, --help                      Show this message.
--v, --verbose, -q, --quiet      Be more or less verbose.
 
 --old, --old-head OLD_HEAD      Specify the OLD_HEAD commit.
 --new, --new-head NEW_HEAD      Specify the NEW_HEAD commit.
