@@ -87,14 +87,14 @@ parse_args()
 
     # Scan args
     local LONG_OPTS=\
-"help"\
-",path:"\
-",patch,no-patch"\
-",diff-bases,no-diff-bases"\
-",diff-heads,no-diff-heads"\
-",include-stable-patch-id,exclude-stable-patch-id"\
-",include-commit-hash,exclude-commit-hash"\
-",old:,old-head:,old-base:,new:,new-head:,new-base:,base:"
+help\
+,path:\
+,patch,no-patch\
+,diff-bases,no-diff-bases\
+,diff-heads,no-diff-heads\
+,include-stable-patch-id,exclude-stable-patch-id\
+,include-commit-hash,exclude-commit-hash\
+,old:,old-head:,old-base:,new:,new-head:,new-base:,base:
 
     local opts
     opts=$(getopt -n git-cross-diff -o -hp -l "$LONG_OPTS" -- "$@")
