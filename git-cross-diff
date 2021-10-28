@@ -175,7 +175,7 @@ clean_patch_log()
     if [[ ${#opt_paths[@]} -gt 0 ]]; then
         cmd+=(-- "${opt_paths[@]}")
     fi
-    pr_info "RUN: '${cmd[@]}'"
+    pr_info "RUN:$(printf " %q" "${cmd[@]}")"
     "${cmd[@]}" | {
         local commit
         local line
