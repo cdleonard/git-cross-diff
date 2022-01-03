@@ -17,11 +17,13 @@ identical patches rebased top of slightly different trees will have different
 commit hashes, but this is not interesting. This script will filter such noise
 and provide an answer to "what was changed by this rebase".
 
+In newer versions of git similar functionality is provided by
+`git range-diff <https://www.git-scm.com/docs/git-range-diff>`_
+
 Options:
 --------
 
 -h, --help                      Show this message.
--v, --verbose, -q, --quiet      Be more or less verbose.
 
 --old, --old-head OLD_HEAD      Specify the OLD_HEAD commit.
 --new, --new-head NEW_HEAD      Specify the NEW_HEAD commit.
